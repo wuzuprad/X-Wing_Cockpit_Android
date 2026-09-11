@@ -61,9 +61,10 @@ can never flash without sending.
 - **AYN Thor** (or any Android 8.0+ / API 26+ device; dual-screen assumed).
 - **Shizuku** installed and running. No root required — Shizuku can be started over
   wireless debugging / ADB. (Rooted devices can start it with one tap.)
-- **GameNative** (or another Winlator build) running the game on the primary screen,
+- **GameNative** (or Gamehub or Winlator build) running the game on the primary screen,
   with the game's controls set to **keyboard** and keyboard input passed through to
   the game.
+  A legally obtained copy of a game in the X-wing series.  Steam, GOG, an .ISO from your own disc with Winlator.
 
 ---
 
