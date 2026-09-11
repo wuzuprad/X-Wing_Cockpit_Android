@@ -1,190 +1,294 @@
-# X-Wing_Cockpit_Android
-An android companion app for the Star Wars X-wing series.  This is specifically a dual screen cockpit companion for dual screen android handhelds
-# X-Wing Cockpit — companion control panel (AYN Thor bottom screen)
+# X-Wing Cockpit
 
-A themed touch control panel that sends keystrokes to X-Wing Alliance (and the
-other classic X-Wing / TIE Fighter games) running in Winlator. Tapping a cockpit
-control presses the matching key in the game.
+**A touch cockpit control panel for the classic LucasArts space sims, built for the
+AYN Thor dual-screen handheld.**
 
-## How it sends keys (important — read first)
+Version 1.0
 
-The app can't type into the game directly; Android sandboxes apps. It uses
-**Shizuku** to run a tiny helper in a shell-privileged process, which calls the
-system `input` command. Those key events are injected globally and reach the
-focused window — i.e. the game.
+X-Wing Cockpit runs on the Thor's **bottom** screen as a themed control panel while
+*X-Wing*, *TIE Fighter*, *X-Wing vs TIE Fighter*, or *X-Wing Alliance* runs in
+GameNative/Winlator on the **top** screen. Tapping a control on the panel presses
+the matching keyboard key in the game, so systems management, shield juggling,
+wingman orders, and mission goals are all one thumb-tap away instead of buried
+under keyboard shortcuts you'd never reach on a handheld.
 
-Because injected keys go to the **focused** window, the game must keep keyboard
-focus while you tap the bottom screen. On a dual-screen device this usually works,
-but it is exactly the thing that can vary by device — which is why you validate it
-in the **Diagnostics** screen before trusting the cockpit. If keys land in the
-wrong place, that's the knob to investigate (making this app's window
-non-focusable is the likely fix; ask and I'll add it).
+---
 
-## First-run workflow (do this before anything else)
+## Contents
+- [How it works](#how-it-works)
+- [Requirements](#requirements)
+- [First-run setup](#first-run-setup)
+- [Using the cockpit](#using-the-cockpit)
+- [Games, craft & missions](#games-craft--missions)
+- [Controls reference](#controls-reference)
+- [Building from source](#building-from-source)
+- [Project structure](#project-structure)
+- [Extending the app](#extending-the-app)
+- [Known limitations](#known-limitations)
+- [1.0 highlights](#10-highlights)
 
-1. Install **Shizuku** (from its GitHub / Play) on the Thor and start it. No root:
-   start it via wireless/ADB per Shizuku's own instructions. With root: one tap.
-2. Build & install this app (below). Launch it on the **bottom** screen.
-3. Open **Diagnostics**. Tap *Grant / Connect* and approve Shizuku's prompt.
-   Status should read **READY**.
-4. Launch X-Wing Alliance in Winlator on the **top** screen. Get into flight.
-5. With the game focused, tap the **S** test button. If the shields reconfigure,
-   the pipeline works and every other control will too. If not, tell me what
-   happened and we adjust the injection method.
+---
 
-Only after the S test works is it worth wiring in real cockpit art.
+## How it works
 
-## Build
+Android sandboxes apps, so one app cannot type into another. X-Wing Cockpit gets
+around this with **Shizuku**, which runs a small helper service in a
+shell-privileged process. That process holds Android's `INJECT_EVENTS` permission,
+so it can inject key events that reach whatever window currently has input focus —
+the game.
 
-Open the folder in **Android Studio** (Hedgehog or newer). It will download the
-Gradle wrapper and dependencies. Then Run onto the device, or `./gradlew
-assembleDebug` once the wrapper is present.
+Two design choices make this reliable on a dual-screen device:
 
-- compileSdk 34, minSdk 26.
-- `input keycombination` (used for Shift+F9 etc.) needs Android 12+ at runtime.
-  The Thor is new hardware so this is fine.
-- This is a first build cut written without an on-device compile pass. Expect to
-  fix a stray import or version nudge in Android Studio; send me anything it flags.
+1. **The panel never takes input focus.** The app's window is marked
+   `FLAG_NOT_FOCUSABLE`. It still receives your touches (all the buttons work), but
+   it never steals focus from the game. That keeps the game's own controller input
+   alive *and* ensures injected keys land in the game rather than the panel.
 
-## Games & selection flow
+2. **Keys are injected like a real keyboard.** The helper calls
+   `InputManager.injectInputEvent` and reproduces a genuine physical-keyboard
+   sequence — for a modified command it sends *Shift down → letter down → letter up
+   → Shift up*, holding each key ~40 ms so the game reliably polls it. This is what
+   makes Shift-based commands (wingman orders, docking) work through the Wine layer,
+   where a naive "key combination" call would drop the modifier.
 
-Four games are configured: X-Wing, TIE Fighter, X-Wing vs TIE Fighter, and
-X-Wing Alliance. Flow is **Game → Faction → Ship**. The faction step is skipped
-automatically when a game has one side (X-Wing = Rebel only, TIE Fighter =
-Imperial only; XvT and XWA offer both). Ship art is shared per craft type across
-all games.
+Touch controls fire on **press-down** (not on tap-release), so a quick or light tap
+can never flash without sending.
 
-## Verified key bindings (shared classic scheme, all four games)
+---
 
-| Control          | Key          |
-|------------------|--------------|
-| Cycle shields    | S            |
-| Cycle weapons    | W            |
-| Cycle fire mode  | X            |
-| Laser recharge   | F9 (cycles)  |
-| Shield recharge  | F10 (cycles) |
-| Beam recharge    | F8 (cycles)  |
-| Laser → shields  | Shift+F9 (or ') |
-| Shields → lasers | Shift+F10 (or ;)|
-| Toggle beam      | B            |
-| Full throttle    | Backspace    |
-| Match speed      | Enter        |
-| 2/3 throttle     | ]            |
-| 1/3 throttle     | [            |
-| Zero throttle    | \ (XWA: /)   |
+## Requirements
 
-Throttle sits in a right-hand column (Full → Match → 2/3 → 1/3 → Zero), defaulting
-to Full — the currently selected level glows bright green, the rest are dark red.
-Match Speed is treated as its own state (the resulting speed is unknown to the
-app). Backspace and Enter are layout-stable; the bracket/slash keys are punctuation
-and worth confirming in-game like the transfer keys. Zero throttle is `\` in the
-older games and `/` in XWA — handled by XWA's own keymap.
+- **AYN Thor** (or any Android 8.0+ / API 26+ device; dual-screen assumed).
+- **Shizuku** installed and running. No root required — Shizuku can be started over
+  wireless debugging / ADB. (Rooted devices can start it with one tap.)
+- **GameNative** (or another Winlator build) running the game on the primary screen,
+  with the game's controls set to **keyboard** and keyboard input passed through to
+  the game.
 
-Energy transfer defaults to **Shift+F9 / Shift+F10** — function keys are
-layout-independent through Winlator, so they're the more reliable choice. The `'`
-and `;` keys do the same thing and are the fallback. The Diagnostics screen fires
-all four so you can confirm which actually moves energy in each game, then set the
-winner in `KeyMap` (`model/Domain.kt`). Original X-Wing has no beam-capable craft,
-so no beam controls appear there.
+---
 
-Confirm in-game and adjust in `model/Domain.kt` if needed:
-- `SHIELD_CYCLE_ORDER` — exact order S cycles (default EQUAL→FWD→REAR).
-- `rechargeLevels` per ship — how many discrete recharge steps exist.
-- Ship rosters (`games` set per ship) — sensible defaults, edit freely.
+## First-run setup
 
-## Adding ships / games
+1. **Start Shizuku** on the Thor (wireless-debugging method if unrooted; re-run
+   after each reboot unless rooted).
+2. **Launch X-Wing Cockpit** on the bottom screen. Open **CONFIG → Diagnostics**,
+   tap **Grant / Connect**, and approve Shizuku's prompt. Status should read
+   **READY — key link is live**.
+3. **Launch your game** in GameNative on the top screen and get into flight.
+4. **Verify the link:** with the game focused, tap the Diagnostics **S (shields)**
+   test button. If the shields reconfigure in-game, the pipeline works and every
+   other control will too.
 
-Edit **only** `model/Domain.kt`:
-- Add a `Ship(...)` to `SHIPS` with its `games` set, `faction`, and `art` id.
-  `hasShields` / `hasBeam` auto-show or hide the matching controls.
-- Each `Game` references its own `KeyMap` (currently all the shared
-  `CLASSIC_KEYMAP`). To diverge one game, set e.g.
-  `Game(GameId.TIE, ..., CLASSIC_KEYMAP.copy(fireMode = KeyStep(...)))`.
-  The UI and injector never change.
+Because the panel is non-focusable, injected keys always go to whatever is focused
+on the main screen. To confirm injection you watch the *game* react — there is no
+in-app capture box (a non-focusable window can't host one).
 
-## Adding your cockpit art
+---
 
-The cockpit currently draws a schematic placeholder. In `ui/Screens.kt`,
-`CockpitScreen` has a marked `COCKPIT ART PLACEHOLDER` box. Drop your PNGs into
-`res/drawable`, layer a base image with `Image(...)`, and swap overlay images
-based on `st` (the live `ShipState`) — e.g. a "shields forward" glow when
-`st.shield == ShieldConfig.FORWARD`. Tap regions can sit on top as transparent
-`HudButton`s. Send the art and I'll wire the layers.
+## Using the cockpit
 
-## Known limitations (by design)
+**Navigation:** Game → Faction → Ship → *Mission* → Loadout → Cockpit.
+The Faction step is skipped for single-side games (X-Wing = Rebel, TIE Fighter =
+Imperial). The Mission step appears for the three games that ship mission data
+(X-Wing, TIE Fighter, X-Wing Alliance); pick **No Battle / Custom Mission** to skip
+goal tracking.
 
-- The game never reports its state back, so the app tracks an **assumed** model
-  seeded from the known starting config. If you also press keys on a controller/
-  keyboard, the assumption can drift. **Reset** re-syncs shields (deterministic)
-  and resets the displayed recharge rates.
+**The cockpit** is three columns:
 
-## Ship commands overlay
+- **Left** — vertical recharge meters (Laser, Shield, Engine, Beam) with the
+  **COMMANDS** and **CONFIG** buttons tucked underneath. Laser fill is **red for
+  Rebel craft, green for Imperial**, matching each side's laser color.
+- **Middle** (top-down stack) — the ship silhouette with a tappable shield-arc
+  indicator, the color-coded **weapon** button (green = lasers, blue = ions, red =
+  warheads), the **fire-mode** cannon-dot graphic, and the two **energy-transfer**
+  buttons.
+- **Right** — the throttle column (Full / Match / 2-3 / 1-3 / Zero) plus the SLAM
+  button on craft that have it.
 
-The **COMMANDS** button (bottom-left of the cockpit) opens a full-screen overlay
-of wingman/comms orders you tap to fire, then CLOSE to return. Grouped as:
+**COMMANDS** opens a full-screen overlay of ship, wingman, docking, and display
+commands. **CONFIG** holds Switch Craft, Reset Cockpit, and Diagnostics.
 
-- Wingman orders: Attack Target (Shift+A), Ignore Target (Shift+I), Evade
-  (Shift+E), Wait/Hold (Shift+W), Go/Proceed (Shift+G), Hyper Home (Shift+H),
-  Report In (Shift+R).
-- Docking/cargo: Dock Target (Shift+D), Rearm Me — call a resupply craft to dock
-  and rearm warheads (Shift+B), Pick Up Object (Shift+P), Enter Hangar (Space).
-- Menus: Flight Menu (Tab).
+**Mission goals:** COMMANDS → DISPLAYS → **Mission Goals** sends `g` (opening the
+game's own goals menu) and, when a mission is selected, opens the app's goals
+screen showing that mission's objectives, **hidden bonus goals**, and tips. Its
+CLOSE button sends `g` again to dismiss the in-game menu and returns you to the
+commands view.
 
-These live in `COMMAND_GROUPS` in `model/Domain.kt` — add/rename/rebind freely.
-Note Shift+R is "report in" in the classic games but "release object" in XWA;
-confirm in-game.
+Because the game never reports its state back, the panel tracks an **assumed**
+model seeded from each craft's known starting configuration. If you also press keys
+on a controller/keyboard the assumption can drift; **Reset Cockpit** re-syncs it.
 
-## Loadout screen
+---
 
-After picking a craft you choose the mission's warhead loadout (this sends no
-keys — it only tells the cockpit what the W weapon-cycle should contain):
+## Games, craft & missions
 
-- Options: No Missiles, Missiles, Adv Missiles, Torpedoes, Adv Torpedoes, Heavy
-  Rocket, Space Bomb, Mag Pulse.
-- Original X-Wing offers only No Missiles / Missiles / Torpedoes; TIE Fighter
-  through XWA offer the full set (per-game list in `Game.warheads`, `Domain.kt`).
-- The full menu is offered to every craft, so a mission-adapted TIE Fighter can
-  carry missiles.
-- The cockpit weapon cycle then shows LASERS + the selected warhead only. With No
-  Missiles the weapon button is inert ("LASERS ONLY").
-- The Missile Boat (`warheadSlots = 2`) picks two warheads — any combo, including
-  doubles. Duplicate types collapse to one entry in the cycle since the app
-  doesn't track ammo count.
+**Games:** X-Wing (Rebel), TIE Fighter (Imperial), X-Wing vs TIE Fighter (both
+sides), X-Wing Alliance (both sides). Each game has its own keymap; the only
+divergence today is XWA's zero-throttle key (`/` vs `\`).
 
-Loadout is preserved across RESET (it's a mission property, not a flight state).
+**Craft (12):**
 
-## Energy management (recharge columns)
+| Rebel | Imperial |
+|-------|----------|
+| X-Wing | TIE Fighter |
+| Y-Wing | TIE Interceptor |
+| A-Wing | TIE Bomber |
+| B-Wing | TIE Advanced |
+| Z-95 Headhunter | Assault Gunboat |
+| | TIE Defender |
+| | Missile Boat |
 
-Recharge is now vertical bar columns on the far left of the cockpit: Laser,
-Shield (if the craft has shields), Engine, and Beam (if the loadout enables it).
+Each craft appears only in the games it belongs to, with the correct cannon count,
+shield/ion/beam/SLAM capabilities, and a bundled silhouette. The panel shows or
+hides controls to match — e.g. shieldless TIEs have no Shield meter or transfer
+buttons; the Missile Boat carries two warhead types.
 
-- Laser / Shield / Beam: 4 boxes = 5 states (0..4), default 2 filled. Tapping the
-  column sends F9 / F10 / F8 and advances one box, wrapping 4 -> 0.
-- Engine: DERIVED and display-only (no tap). Pool depends on the craft: 6 for shieldless craft (smaller reactor), 8 for
-  shielded, +2 more when beam is on. Beam recharge draws from the pool:
-  `engine = pool - laser - shield - beam`. Beam on + beam bar empty = +2 engine
-  headroom; charging the beam bar spends it back.
-- Energy is CONSERVED. A recharge press can only add a box if the engine has one to
-  give. One press does: at max -> wrap to 0 (returns all boxes to engine); else if
-  engine > 0 -> +1 (draws from engine); else (engine empty) -> dump to 0 (returns its
-  boxes to engine). So e.g. L4 S4 B2 (engine 0), press beam -> B0, engine 2.
-- Shieldless craft (e.g. TIE Fighter) hide the Shield column.
+**Missions & bonus goals** (bundled as `assets/missions.json`):
 
-Beam presence: the Gunboat always has its beam; the TIE Defender and Missile Boat
-get a BEAM ON/OFF toggle on the loadout screen (default OFF — beam is later-game tech).
-`Ship.beamOptional` controls which craft show the toggle.
+| Game | Groups | Missions | Notes |
+|------|--------|----------|-------|
+| X-Wing | 6 tours | 100 | Training Ground (by craft) + 5 Tours of Duty; summary → goals → tips |
+| TIE Fighter | 13 battles | 76 | Hidden bonus goals with an Easy / Medium / Hard toggle |
+| X-Wing Alliance | 9 battles | 53 | Objectives, hidden bonus goals, opponents, summarized difficulty & tips |
 
-VERIFY in-game: that laser/shield recharge actually has 5 steps and that F9/F10
-cycle up and wrap — adjust the box count / cycle in `Domain.kt` if the game differs.
+---
 
-## Ship art spec (shield indicator)
+## Controls reference
 
-Each craft needs ONE silhouette image (the shield ring/arcs are app-drawn):
-- 1024 x 1024 transparent PNG (512 acceptable), same canvas for every craft.
-- Ship centered inside an ~80% safe zone; displays ~300-350 px on the Thor's
-  1240x1080 bottom screen.
-- Filename maps to `Ship.art` in Domain.kt (e.g. cockpit_xwing -> res/drawable).
+All four games share one keymap unless noted.
 
-Shields are now a single toggle: one tap = one S press, cycling equal -> forward
--> rear -> equal (matching the in-game S key). The circular indicator with the
-silhouette + state arc replaces the placeholder button once art is supplied.
+### Cockpit
+| Control | Key |
+|---------|-----|
+| Cycle shields (EQUAL → REAR → FORWARD) | S |
+| Cycle weapon | W |
+| Cycle fire mode | X |
+| Laser recharge | F9 |
+| Shield recharge | F10 |
+| Beam recharge | F8 |
+| Transfer laser → shields | `'` |
+| Transfer shields → lasers | `;` |
+| SLAM | N |
+
+### Throttle
+| Button | Key |
+|--------|-----|
+| Full | Backspace |
+| 2/3 | ] |
+| 1/3 | [ |
+| Zero | `\` (XWA: `/`) |
+| Match speed | Enter |
+
+### Commands overlay
+| Group | Commands (key) |
+|-------|----------------|
+| Ship | Next Target (T), Prev Target (Y), Nearest Fighter (R), Enter Hangar (Space), Engage Hyperdrive (H), Cockpit Display (I) |
+| Wingman Orders | Attack (Shift+A), Ignore (Shift+I), Evade (Shift+E), Wait/Hold (Shift+W), Go/Proceed (Shift+G), Hyper Home (Shift+H), Report In (Shift+R) |
+| Docking / Cargo | Dock (Shift+D), Rearm Me (Shift+B), Pick Up Obj (Shift+P) |
+| Displays | Mission Goals (G), Message Log (L), Damage (D), In-Flight Map (M), Target Threat (Z), Keyboard Ref (K) |
+
+Energy transfer uses the single-key `'` / `;` equivalents rather than the
+Shift+F10 / Shift+F9 chords, because the single keys are reliable through Wine.
+
+---
+
+## Building from source
+
+Open the project in **Android Studio** and Run onto the device, or use the Gradle
+wrapper once it's present:
+
+```
+./gradlew assembleDebug
+```
+
+**Toolchain (pinned and matched):**
+
+| Component | Version |
+|-----------|---------|
+| Android Gradle Plugin | 8.13.2 |
+| Gradle | 8.13 |
+| Kotlin | 1.9.24 |
+| Compose compiler extension | 1.5.14 |
+| compileSdk / targetSdk | 34 |
+| minSdk | 26 |
+| JDK | 17 |
+
+AGP and Gradle are version-locked together — if you bump one, bump the other
+(AGP 8.13 requires Gradle ≥ 8.13). Kotlin 1.9.24 and Compose compiler 1.5.14 are a
+matched pair; keep them in step if you upgrade.
+
+---
+
+## Project structure
+
+```
+app/src/main/
+├── java/com/example/xwingcockpit/
+│   ├── MainActivity.kt          Navigation + the FLAG_NOT_FOCUSABLE window setup
+│   ├── model/
+│   │   ├── Domain.kt            Games, craft roster, keymaps, energy model,
+│   │   │                        fire-mode logic, command groups
+│   │   └── Missions.kt          Mission data model + assets/missions.json loader
+│   ├── ui/
+│   │   ├── CockpitViewModel.kt  Assumed-state model + key dispatch
+│   │   └── Screens.kt           All Compose UI
+│   └── input/
+│       ├── ShizukuInjector.kt   Binds the Shizuku user service, queues key steps
+│       ├── UserService.kt       Runs shell-side; injects real keyboard sequences
+│       └── aidl/…/IUserService.aidl
+├── assets/missions.json         X-Wing (100) + TIE (76) + XWA (53) mission data
+└── res/drawable-nodpi/          12 bundled cockpit_*.png craft silhouettes
+```
+
+---
+
+## Extending the app
+
+**Add or change craft / games:** edit `model/Domain.kt` only. Add a `Ship(...)` to
+`SHIPS` with its `games` set, faction, cannon count, and capability flags; the UI
+and injector adapt automatically. Each `Game` references a keymap — diverge one
+game with e.g. `CLASSIC_KEYMAP.copy(fireMode = KeyStep(...))`.
+
+**Add craft art:** drop a 1024×1024 transparent PNG into `res/drawable-nodpi/`
+named to match the ship's `art` id (e.g. `cockpit_xwing.png`).
+
+**Edit missions:** regenerate or hand-edit `assets/missions.json`. Each game maps
+to a list of battles/tours, each with missions carrying goals, bonus goals, and
+(for X-Wing/XWA) summary and tips.
+
+**Rebind commands:** the wingman/ship/docking/display commands live in
+`COMMAND_GROUPS` in `model/Domain.kt`.
+
+---
+
+## Known limitations
+
+- **No live game state.** The panel can't read the game, so it shows an assumed
+  model. Use **Reset Cockpit** to re-sync after using another input device.
+- **No hardware-button shortcut to the goals screen.** Because the panel is
+  deliberately non-focusable (the thing that keeps the game focused), it can't
+  observe controller/keyboard keys, so a physical button can't toggle the app's
+  goals view without an accessibility service or input-monitoring setup. Left out
+  by design; use the on-screen Mission Goals command instead.
+- **Keyboard passthrough depends on GameNative.** Injected keys only help if the
+  game's controls are set to keyboard and GameNative forwards keyboard input to it
+  (the same path a real Bluetooth keyboard would use).
+
+---
+
+## 1.0 highlights
+
+Everything below is implemented and confirmed on real AYN Thor hardware:
+
+- Full cockpit control panel for all four games, laid out for the Thor's near-square
+  bottom screen (top-down middle column, per-faction laser colors, color-coded
+  weapon button).
+- Reliable key injection via `InputManager.injectInputEvent`, including true
+  Shift-chord commands and a ~40 ms key hold so nothing is dropped.
+- Non-focusable window so the game keeps focus and controller input.
+- Touch controls fire on press-down for responsiveness.
+- Single-key energy transfer (`'` / `;`); correct shield-cycle direction.
+- Mission-goal system across three games (229 missions total) surfacing hidden
+  bonus objectives, with per-difficulty goals for TIE Fighter and summarized tips
+  for X-Wing Alliance.
+- All 12 craft silhouettes bundled; no per-build asset copying.
