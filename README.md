@@ -64,7 +64,7 @@ can never flash without sending.
 - **GameNative** (or Gamehub or Winlator build) running the game on the primary screen,
   with the game's controls set to **keyboard** and keyboard input passed through to
   the game.
-  A legally obtained copy of a game in the X-wing series.  Steam, GOG, an .ISO from your own disc with Winlator.
+-  A legally obtained copy of a game in the X-wing series.  Steam, GOG, an .ISO from your own disc with Winlator.
 
 ---
 
