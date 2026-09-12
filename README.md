@@ -3,6 +3,8 @@
 **A touch cockpit control panel for the classic LucasArts space sims, built for the
 AYN Thor dual-screen handheld.**
 
+https://youtu.be/om3cUkTnZiw
+
 Version 1.0
 
 X-Wing Cockpit runs on the Thor's **bottom** screen as a themed control panel while
